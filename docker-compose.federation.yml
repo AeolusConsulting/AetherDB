@@ -1,0 +1,77 @@
+# Federated replication: hub + spoke topology.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.federation.yml up
+
+services:
+  hub-gateway:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.app
+      args:
+        APP: api-gateway
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      AETHERDB_FEDERATION_ENABLED: "true"
+      AETHERDB_FEDERATION_ROLE: "hub"
+      AETHERDB_GATEWAY_BIND: "0.0.0.0:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  spoke-us-west:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.app
+      args:
+        APP: api-gateway
+    ports:
+      - "8082:8080"
+    env_file: .env
+    environment:
+      AETHERDB_FEDERATION_ENABLED: "true"
+      AETHERDB_FEDERATION_ROLE: "spoke"
+      AETHERDB_FEDERATION_HUB_URL: "http://hub-gateway:8080"
+      AETHERDB_FEDERATION_SYNC_INTERVAL_SECS: "10"
+      AETHERDB_GATEWAY_BIND: "0.0.0.0:8080"
+    depends_on:
+      hub-gateway:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  spoke-eu:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.app
+      args:
+        APP: api-gateway
+    ports:
+      - "8083:8080"
+    env_file: .env
+    environment:
+      AETHERDB_FEDERATION_ENABLED: "true"
+      AETHERDB_FEDERATION_ROLE: "spoke"
+      AETHERDB_FEDERATION_HUB_URL: "http://hub-gateway:8080"
+      AETHERDB_FEDERATION_SYNC_INTERVAL_SECS: "10"
+      AETHERDB_GATEWAY_BIND: "0.0.0.0:8080"
+    depends_on:
+      hub-gateway:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10

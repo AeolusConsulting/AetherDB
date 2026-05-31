@@ -1,0 +1,17 @@
+{
+  "name": "@aetherdb/mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server for AetherDB — exposes semantic search, GraphRAG, and document management as AI tools",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "aetherdb-mcp": "src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  },
+  "license": "Apache-2.0"
+}

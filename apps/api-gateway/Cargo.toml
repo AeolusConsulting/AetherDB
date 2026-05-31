@@ -1,0 +1,40 @@
+[package]
+name = "aetherdb-api-gateway"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "api-gateway"
+path = "src/main.rs"
+
+[dependencies]
+aetherdb-config = { path = "../../crates/config" }
+aetherdb-telemetry = { path = "../../crates/telemetry" }
+aetherdb-domain = { path = "../../crates/domain" }
+aetherdb-storage = { path = "../../crates/storage" }
+aetherdb-events = { path = "../../crates/events" }
+aetherdb-messaging = { path = "../../crates/messaging" }
+aetherdb-vector = { path = "../../crates/vector" }
+aetherdb-graph = { path = "../../crates/graph" }
+aetherdb-hnsw = { path = "../../crates/hnsw" }
+aetherdb-embedding-worker = { path = "../../apps/embedding-worker" }
+aetherdb-sync = { path = "../../crates/sync" }
+axum = "0.7"
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+tower-http = { version = "0.6", features = ["compression-full", "cors", "timeout"] }
+metrics = "0.24"
+sha2 = "0.10"
+hex = "0.4"
+reqwest = { version = "0.12", features = ["json"] }
+libsql = "0.6"

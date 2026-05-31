@@ -1,0 +1,149 @@
+global:
+  image:
+    repository: aetherdb
+    tag: latest
+    pullPolicy: IfNotPresent
+  storageRole: primary
+  minimalMode: false
+  logLevel: info
+
+apiGateway:
+  replicas: 2
+  port: 8080
+  metricsPort: 9090
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPU: 70
+  ingress:
+    enabled: false
+    className: ""
+    host: aetherdb.local
+    tls: false
+
+embeddingWorker:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+graphWorker:
+  enabled: false
+  replicas: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+analyticsConsumer:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+duckdbExporter:
+  schedule: "0 * * * *"
+  storage: 5Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+
+sqld:
+  enabled: true
+  storage: 10Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+redpanda:
+  enabled: true
+  storage: 10Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+clickhouse:
+  enabled: true
+  storage: 20Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+
+ollama:
+  enabled: true
+  storage: 20Gi
+  model: nomic-embed-text
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      cpu: "4"
+      memory: 8Gi
+
+prometheus:
+  enabled: true
+
+grafana:
+  enabled: true
+
+graph:
+  enabled: false
+
+hnsw:
+  enabled: false
+  efConstruction: 100
+  m: 16
+  efSearch: 50
+  rebuildInterval: 300
+
+embedding:
+  provider: ollama
+  dim: 768
+  model: nomic-embed-text
+  apiKey: ""
+
+llm:
+  provider: ollama
+  model: llama3.2
+  apiKey: ""
+
+secrets:
+  embedApiKey: ""
+  llmApiKey: ""
+  libsqlAuthToken: ""

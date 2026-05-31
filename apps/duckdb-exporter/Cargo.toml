@@ -1,0 +1,25 @@
+[package]
+name = "aetherdb-duckdb-exporter"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "duckdb-exporter"
+path = "src/main.rs"
+
+[dependencies]
+aetherdb-config = { path = "../../crates/config" }
+aetherdb-telemetry = { path = "../../crates/telemetry" }
+aetherdb-storage = { path = "../../crates/storage" }
+aetherdb-domain = { path = "../../crates/domain" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+duckdb = { version = "1.1", features = ["bundled"] }
+libsql = "0.6"
+chrono = { workspace = true }

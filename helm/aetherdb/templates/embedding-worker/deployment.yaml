@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-embedding-worker
+  labels:
+    {{- include "aetherdb.labels" . | nindent 4 }}
+    app.kubernetes.io/component: embedding-worker
+spec:
+  replicas: {{ .Values.embeddingWorker.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: embedding-worker
+      {{- include "aetherdb.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: embedding-worker
+        {{- include "aetherdb.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: embedding-worker
+          image: "{{ .Values.global.image.repository }}/embedding-worker:{{ .Values.global.image.tag }}"
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-config
+            - secretRef:
+                name: {{ .Release.Name }}-secrets
+          resources:
+            {{- toYaml .Values.embeddingWorker.resources | nindent 12 }}

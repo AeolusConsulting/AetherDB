@@ -1,0 +1,29 @@
+# Distributed mode: replicas sync from sqld primary.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.distributed.yml up
+
+services:
+  api-gateway:
+    environment:
+      AETHERDB_LIBSQL_URL: "http://sqld:8080"
+      AETHERDB_REPLICA_LOCAL_PATH: "/data/replica.db"
+      AETHERDB_STORAGE_ROLE: "replica"
+    volumes:
+      - gateway-replica-data:/data
+    depends_on:
+      sqld:
+        condition: service_healthy
+
+  embedding-worker:
+    environment:
+      AETHERDB_LIBSQL_URL: "http://sqld:8080"
+      AETHERDB_REPLICA_LOCAL_PATH: "/data/replica.db"
+      AETHERDB_STORAGE_ROLE: "replica"
+    volumes:
+      - worker-replica-data:/data
+    depends_on:
+      sqld:
+        condition: service_healthy
+
+volumes:
+  gateway-replica-data:
+  worker-replica-data:

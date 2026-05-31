@@ -1,0 +1,490 @@
+openapi: 3.1.0
+info:
+  title: AetherDB API
+  description: AI-native database with semantic search, GraphRAG, hybrid search, full-text search, and CRDT sync. Runs on Cloudflare Workers + D1 + Vectorize + Workers AI.
+  version: 1.0.0
+  license:
+    name: Apache-2.0
+
+servers:
+  - url: https://your-aetherdb.workers.dev
+    description: Production (Cloudflare Workers)
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Bearer token set via Worker secrets (API_TOKEN). Admin endpoints require ADMIN_TOKEN.
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: Service status with document/entity/relationship counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  domain: { type: string }
+                  documents: { type: integer }
+                  entities: { type: integer }
+                  relationships: { type: integer }
+
+  /v1/documents:
+    post:
+      summary: Create document
+      description: |
+        Creates a document, auto-embeds via Workers AI (bge-base-en-v1.5),
+        indexes in Vectorize, and extracts entities/relationships in the background
+        via GLM-4.7-Flash. Deduplicates by content hash (opt-out with deduplicate: false).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string, maxLength: 1048576 }
+                metadata: { type: object, additionalProperties: true }
+                deduplicate: { type: boolean, default: true }
+      responses:
+        '201':
+          description: Document created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  created_at: { type: string, format: date-time }
+                  embedded: { type: boolean }
+                  entities: { type: string, example: processing }
+        '200':
+          description: Duplicate document found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  created_at: { type: string, format: date-time }
+                  duplicate: { type: boolean, example: true }
+
+  /v1/documents/bulk:
+    post:
+      summary: Bulk import documents
+      description: |
+        Import up to 1000 documents. Embeds all in batches of 100.
+        Supports two body formats: plain array or {documents: [], extract_entities: true}.
+        Entity extraction runs in background when opt-in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: array
+                  items:
+                    type: object
+                    properties:
+                      content: { type: string }
+                      metadata: { type: object }
+                - type: object
+                  properties:
+                    documents:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          content: { type: string }
+                          metadata: { type: object }
+                    extract_entities: { type: boolean }
+      responses:
+        '200':
+          description: Bulk import results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created: { type: integer }
+                  errors: { type: integer }
+                  embedded: { type: integer }
+                  entities_extraction: { type: string, enum: [background, skipped] }
+                  documents: { type: array, items: { type: object } }
+                  error_details: { type: array, items: { type: object } }
+
+  /v1/documents/list:
+    get:
+      summary: List documents with filters
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 1000 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: content_contains
+          in: query
+          schema: { type: string }
+        - name: created_after
+          in: query
+          schema: { type: integer, description: Unix milliseconds }
+        - name: created_before
+          in: query
+          schema: { type: integer, description: Unix milliseconds }
+      responses:
+        '200':
+          description: Paginated document list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  documents: { type: array, items: { type: object } }
+                  total: { type: integer }
+                  limit: { type: integer }
+                  offset: { type: integer }
+
+  /v1/documents/{id}:
+    get:
+      summary: Get document by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Document
+        '404':
+          description: Not found
+    put:
+      summary: Update document
+      description: Updates content, re-embeds, re-extracts entities in background. Saves previous version.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string }
+                metadata: { type: object }
+      responses:
+        '200':
+          description: Updated
+        '404':
+          description: Not found
+    delete:
+      summary: Soft-delete document
+      description: Soft-deletes document, removes from Vectorize, FTS, and entity graph.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+
+  /v1/documents/{id}/versions:
+    get:
+      summary: Get version history
+      description: Returns previous versions of a document, most recent first.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Version history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document_id: { type: string }
+                  versions: { type: array, items: { type: object } }
+                  count: { type: integer }
+
+  /v1/search/semantic:
+    post:
+      summary: Semantic vector search
+      description: Embeds query via Workers AI, searches Vectorize. Optional metadata filtering.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string }
+                top_k: { type: integer, default: 10, maximum: 100 }
+                return_content: { type: boolean, default: false }
+                filter:
+                  type: object
+                  description: Vectorize metadata filter (e.g. {"source":"myapp"})
+                  additionalProperties: true
+      responses:
+        '200':
+          description: Search results ranked by cosine similarity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        document_id: { type: string }
+                        score: { type: number }
+                        content_preview: { type: string }
+                        content: { type: string, description: Only if return_content=true }
+                        metadata: { type: object, description: Only if return_content=true }
+                  count: { type: integer }
+
+  /v1/search/hybrid:
+    post:
+      summary: Hybrid vector + graph search
+      description: |
+        Combines vector similarity with knowledge graph traversal.
+        Score = (1 - graph_weight) * vector_score + graph_weight * graph_score.
+        Graph score = 1 / (1 + hop_count).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string }
+                top_k: { type: integer, default: 10 }
+                graph_depth: { type: integer, default: 2, maximum: 5 }
+                graph_weight: { type: number, default: 0.3, minimum: 0, maximum: 1 }
+                return_content: { type: boolean, default: false }
+                filter: { type: object, additionalProperties: true }
+      responses:
+        '200':
+          description: Hybrid search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        document_id: { type: string }
+                        score: { type: number }
+                        vector_score: { type: number }
+                        graph_score: { type: number }
+                        content_preview: { type: string }
+                  count: { type: integer }
+
+  /v1/search/fulltext:
+    post:
+      summary: Full-text keyword search
+      description: SQLite FTS5 search with MATCH syntax, snippets, and BM25 ranking.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string, description: "FTS5 MATCH syntax (e.g. 'Rust ownership', 'memory AND safety')" }
+                top_k: { type: integer, default: 10 }
+                return_content: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Full-text search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        document_id: { type: string }
+                        snippet: { type: string }
+                        rank: { type: number }
+                  count: { type: integer }
+
+  /v1/query:
+    post:
+      summary: Read-only SQL query
+      description: Execute SELECT/WITH queries against D1. Write operations are blocked.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sql]
+              properties:
+                sql: { type: string }
+      responses:
+        '200':
+          description: Query results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows: { type: array, items: { type: object } }
+                  count: { type: integer }
+
+  /v1/graph/entities:
+    get:
+      summary: List entities for a document
+      parameters:
+        - name: document_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Entities extracted from the document
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entities:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        entity_type: { type: string, enum: [person, organization, concept, location, event, technology, other] }
+                        document_id: { type: string }
+
+  /v1/graph/entities/{name}/related:
+    get:
+      summary: Find related documents via graph traversal
+      description: Bidirectional recursive traversal through entity relationships.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+        - name: depth
+          in: query
+          schema: { type: integer, default: 2, maximum: 5 }
+      responses:
+        '200':
+          description: Related documents with hop count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  documents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        document_id: { type: string }
+                        entity_name: { type: string }
+                        hop_count: { type: integer }
+
+  /v1/sync/pull:
+    post:
+      summary: Pull changes since HLC timestamp
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                since:
+                  type: object
+                  properties:
+                    wall_ms: { type: integer }
+                    counter: { type: integer }
+      responses:
+        '200':
+          description: Changes since timestamp
+
+  /v1/sync/push:
+    post:
+      summary: Push changes for CRDT merge
+      description: Pushed documents are embedded and indexed in Vectorize. Deleted docs are removed.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                changes: { type: array, items: { type: object } }
+      responses:
+        '200':
+          description: Push results
+
+  /v1/admin/backfill-embeddings:
+    post:
+      summary: Re-embed all documents
+      security:
+        - adminAuth: []
+      responses:
+        '200':
+          description: Backfill results
+
+  /v1/admin/backfill-entities:
+    post:
+      summary: Extract entities for docs without them
+      description: Processes up to 50 documents per call. Invoke repeatedly until total=0.
+      security:
+        - adminAuth: []
+      responses:
+        '200':
+          description: Extraction results
+
+  /v1/admin/backfill-fts:
+    post:
+      summary: Rebuild full-text search index
+      security:
+        - adminAuth: []
+      responses:
+        '200':
+          description: FTS rebuild results
+
+  /v1/admin/init-schema:
+    post:
+      summary: Initialize FTS and versioning tables
+      security:
+        - adminAuth: []
+      responses:
+        '200':
+          description: Schema initialization results

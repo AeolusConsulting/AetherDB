@@ -1,0 +1,36 @@
+# Development override: use locally-built binaries instead of Docker builds.
+# Copy to docker-compose.override.yml and adjust paths.
+#
+# Usage:
+#   cargo build --release --workspace
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+#   docker compose up
+
+services:
+  api-gateway:
+    build: !reset null
+    image: debian:bookworm-slim
+    volumes:
+      - ./target/release/api-gateway:/usr/local/bin/api-gateway:ro
+    entrypoint: ["/usr/local/bin/api-gateway"]
+
+  embedding-worker:
+    build: !reset null
+    image: debian:bookworm-slim
+    volumes:
+      - ./target/release/embedding-worker:/usr/local/bin/embedding-worker:ro
+    entrypoint: ["/usr/local/bin/embedding-worker"]
+
+  graph-worker:
+    build: !reset null
+    image: debian:bookworm-slim
+    volumes:
+      - ./target/release/graph-worker:/usr/local/bin/graph-worker:ro
+    entrypoint: ["/usr/local/bin/graph-worker"]
+
+  analytics-consumer:
+    build: !reset null
+    image: debian:bookworm-slim
+    volumes:
+      - ./target/release/analytics-consumer:/usr/local/bin/analytics-consumer:ro
+    entrypoint: ["/usr/local/bin/analytics-consumer"]

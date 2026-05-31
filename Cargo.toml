@@ -1,0 +1,46 @@
+[workspace]
+resolver = "3"
+members = [
+    "apps/api-gateway",
+    "apps/embedding-worker",
+    "apps/analytics-consumer",
+    "apps/duckdb-exporter",
+    "crates/domain",
+    "crates/events",
+    "crates/storage",
+    "crates/vector",
+    "crates/telemetry",
+    "crates/config",
+    "crates/messaging",
+    "crates/graph",
+    "crates/hnsw",
+    "apps/graph-worker",
+    "crates/edge",
+    "crates/sync",
+]
+
+exclude = [
+    "tests/contracts",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "warn"
+panic = "deny"
+
+[workspace.dependencies]
+tokio = { version = "1.40", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+anyhow = "1"
+thiserror = "1"
+uuid = { version = "1", features = ["v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+async-trait = "0.1"

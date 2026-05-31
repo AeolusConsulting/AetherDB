@@ -1,0 +1,28 @@
+{{- if .Values.prometheus.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-prometheus-config
+  labels:
+    {{- include "aetherdb.labels" . | nindent 4 }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    scrape_configs:
+      - job_name: api-gateway
+        static_configs:
+          - targets: ["{{ .Release.Name }}-api-gateway:{{ .Values.apiGateway.metricsPort }}"]
+      - job_name: embedding-worker
+        static_configs:
+          - targets: ["{{ .Release.Name }}-embedding-worker:9090"]
+      - job_name: analytics-consumer
+        static_configs:
+          - targets: ["{{ .Release.Name }}-analytics-consumer:9090"]
+      {{- if .Values.graphWorker.enabled }}
+      - job_name: graph-worker
+        static_configs:
+          - targets: ["{{ .Release.Name }}-graph-worker:9090"]
+      {{- end }}
+{{- end }}

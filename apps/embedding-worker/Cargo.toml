@@ -1,0 +1,31 @@
+[package]
+name = "aetherdb-embedding-worker"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "embedding-worker"
+path = "src/main.rs"
+
+[dependencies]
+aetherdb-config = { path = "../../crates/config" }
+aetherdb-telemetry = { path = "../../crates/telemetry" }
+aetherdb-domain = { path = "../../crates/domain" }
+aetherdb-storage = { path = "../../crates/storage" }
+aetherdb-events = { path = "../../crates/events" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+reqwest = { version = "0.12", features = ["json"] }
+aetherdb-messaging = { path = "../../crates/messaging" }

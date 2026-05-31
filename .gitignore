@@ -1,0 +1,27 @@
+/target
+**/target/
+**/*.rs.bk
+*.pdb
+.env
+.env.*
+*.db
+*.db-*
+/exports/
+tests/corpus/msmarco_10k.json
+node_modules/
+
+# Secrets
+do_not_git_this_info.txt
+*.secret
+
+# Local config
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.pi/
+
+# Screenshots / test artifacts
+*.png
+*.webp
+
+# Wrangler (use wrangler.toml.example as template)
+cf-worker/wrangler.toml

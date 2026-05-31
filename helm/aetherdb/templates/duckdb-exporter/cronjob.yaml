@@ -1,0 +1,49 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-duckdb-exporter
+  labels:
+    {{- include "aetherdb.labels" . | nindent 4 }}
+    app.kubernetes.io/component: duckdb-exporter
+spec:
+  schedule: {{ .Values.duckdbExporter.schedule | quote }}
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: duckdb-exporter
+            {{- include "aetherdb.selectorLabels" . | nindent 12 }}
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: duckdb-exporter
+              image: "{{ .Values.global.image.repository }}/duckdb-exporter:{{ .Values.global.image.tag }}"
+              imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+              envFrom:
+                - configMapRef:
+                    name: {{ .Release.Name }}-config
+                - secretRef:
+                    name: {{ .Release.Name }}-secrets
+              resources:
+                {{- toYaml .Values.duckdbExporter.resources | nindent 16 }}
+              volumeMounts:
+                - name: exports
+                  mountPath: /exports
+          volumes:
+            - name: exports
+              persistentVolumeClaim:
+                claimName: {{ .Release.Name }}-exports
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-exports
+  labels:
+    {{- include "aetherdb.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.duckdbExporter.storage }}

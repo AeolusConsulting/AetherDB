@@ -1,0 +1,16 @@
+[package]
+name = "aetherdb-vector"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+aetherdb-domain = { path = "../domain" }
+aetherdb-storage = { path = "../storage" }
+libsql = "0.6"
+tracing = { workspace = true }
+uuid = { workspace = true }

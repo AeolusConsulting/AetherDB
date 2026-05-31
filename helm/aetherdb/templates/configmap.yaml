@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  labels:
+    {{- include "aetherdb.labels" . | nindent 4 }}
+data:
+  AETHERDB_LIBSQL_URL: {{ if .Values.sqld.enabled }}"http://{{ .Release.Name }}-sqld:8080"{{ else }}"file:./aether.db"{{ end }}
+  AETHERDB_REDPANDA_BROKERS: {{ if .Values.redpanda.enabled }}"{{ .Release.Name }}-redpanda:9092"{{ else }}""{{ end }}
+  AETHERDB_CLICKHOUSE_URL: {{ if .Values.clickhouse.enabled }}"http://{{ .Release.Name }}-clickhouse:8123"{{ else }}""{{ end }}
+  AETHERDB_GATEWAY_BIND: "0.0.0.0:{{ .Values.apiGateway.port }}"
+  AETHERDB_PROMETHEUS_BIND: "0.0.0.0:{{ .Values.apiGateway.metricsPort }}"
+  AETHERDB_LOG_LEVEL: {{ .Values.global.logLevel | quote }}
+  AETHERDB_MINIMAL_MODE: {{ .Values.global.minimalMode | quote }}
+  AETHERDB_STORAGE_ROLE: {{ .Values.global.storageRole | quote }}
+  AETHERDB_EMBED_DIM: {{ .Values.embedding.dim | quote }}
+  AETHERDB_EMBED_PROVIDER: {{ .Values.embedding.provider | quote }}
+  AETHERDB_EMBED_MODEL: {{ .Values.embedding.model | quote }}
+  AETHERDB_EMBED_BASE_URL: "http://{{ .Release.Name }}-ollama:11434/v1"
+  AETHERDB_GRAPH_ENABLED: {{ .Values.graph.enabled | quote }}
+  AETHERDB_HNSW_ENABLED: {{ .Values.hnsw.enabled | quote }}
+  AETHERDB_HNSW_EF_CONSTRUCTION: {{ .Values.hnsw.efConstruction | quote }}
+  AETHERDB_HNSW_M: {{ .Values.hnsw.m | quote }}
+  AETHERDB_HNSW_EF_SEARCH: {{ .Values.hnsw.efSearch | quote }}
+  AETHERDB_HNSW_REBUILD_INTERVAL: {{ .Values.hnsw.rebuildInterval | quote }}
+  AETHERDB_LLM_PROVIDER: {{ .Values.llm.provider | quote }}
+  AETHERDB_LLM_MODEL: {{ .Values.llm.model | quote }}
+  AETHERDB_LLM_BASE_URL: "http://{{ .Release.Name }}-ollama:11434/v1"
+  AETHERDB_EXPORT_DIR: "/exports"
+  AETHERDB_EXPORT_CRON: {{ .Values.duckdbExporter.schedule | quote }}

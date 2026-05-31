@@ -1,0 +1,12 @@
+apiVersion: v2
+name: aetherdb
+description: AI-native embedded operational database platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - database
+  - vector-search
+  - graphrag
+  - ai
+  - embedded

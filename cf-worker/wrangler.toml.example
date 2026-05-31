@@ -1,0 +1,29 @@
+name = "aetherdb-worker"
+main = "src/index.js"
+compatibility_date = "2024-12-01"
+account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
+
+# Uncomment to use a custom domain:
+# routes = [
+#   { pattern = "aetherdb.yourdomain.com", custom_domain = true }
+# ]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "aetherdb"
+database_id = "YOUR_D1_DATABASE_ID"
+
+[ai]
+binding = "AI"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "aetherdb-vectors"
+
+# Auth: set API_TOKEN and ADMIN_TOKEN as Worker secrets:
+#   npx wrangler secret put API_TOKEN
+#   npx wrangler secret put ADMIN_TOKEN
+# Clients use: Authorization: Bearer <token>
+#
+# Optional: set RATE_LIMIT_RPM to override default 60 requests/minute
+#   npx wrangler secret put RATE_LIMIT_RPM

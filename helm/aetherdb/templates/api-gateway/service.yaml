@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-api-gateway
+  labels:
+    {{- include "aetherdb.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api-gateway
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.apiGateway.port }}
+      targetPort: http
+      name: http
+    - port: {{ .Values.apiGateway.metricsPort }}
+      targetPort: metrics
+      name: metrics
+  selector:
+    app.kubernetes.io/component: api-gateway
+    {{- include "aetherdb.selectorLabels" . | nindent 4 }}

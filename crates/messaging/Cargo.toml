@@ -1,0 +1,21 @@
+[package]
+name = "aetherdb-messaging"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+aetherdb-domain = { path = "../domain" }
+aetherdb-events = { path = "../events" }
+rdkafka = { version = "0.36", features = ["cmake-build", "zstd"] }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
