@@ -34,12 +34,35 @@ curl http://localhost:8080/v1/graph/entities/Rust/related?depth=2
 
 ## Quick Start
 
+### Deploy to Cloudflare Workers (recommended)
+
+```bash
+cd cf-worker
+npm install
+cp wrangler.toml.example wrangler.toml
+# Edit wrangler.toml with your account_id and database_id
+
+npx wrangler d1 create aetherdb
+npx wrangler vectorize create aetherdb-vectors --dimensions=768 --metric=cosine
+npx wrangler secret put API_TOKEN
+npx wrangler deploy
+```
+
+Then initialize the database tables:
+
+```bash
+curl -X POST https://your-worker.workers.dev/v1/admin/init-schema \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full setup including migrations and Vectorize metadata indexes.
+
+### Run locally with Docker (Rust stack)
+
 ```bash
 cp .env.example .env
 docker compose up -d
 ```
-
-This starts the full stack: API gateway, embedding worker, graph worker, analytics consumer, sqld, Redpanda, ClickHouse, Ollama, Prometheus, and Grafana.
 
 ## Architecture
 

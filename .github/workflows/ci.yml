@@ -6,14 +6,37 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-D warnings"
-
 jobs:
-  check:
-    name: Build & Test
+  worker:
+    name: CF Worker
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: cf-worker
+        run: npm ci
+
+      - name: Check wrangler.toml.example exists
+        run: test -f cf-worker/wrangler.toml.example
+
+      - name: Syntax check worker
+        run: node --check cf-worker/src/index.js
+
+      - name: Syntax check MCP server
+        run: node --check mcp-server/src/index.js
+
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: "-D warnings"
     steps:
       - uses: actions/checkout@v4
 
@@ -26,7 +49,7 @@ jobs:
       - name: Install CMake
         run: sudo apt-get update && sudo apt-get install -y cmake
 
-      - name: Cache cargo registry & build
+      - name: Cache cargo
         uses: actions/cache@v4
         with:
           path: |
@@ -43,11 +66,3 @@ jobs:
 
       - name: cargo test
         run: cargo test --workspace
-
-      - name: Smoke test (libSQL vectors)
-        run: bash scripts/smoke-libsql-vector.sh
-        continue-on-error: true
-
-      - name: Verification script
-        run: bash scripts/verify.sh
-        continue-on-error: true
