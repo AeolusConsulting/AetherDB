@@ -4,7 +4,130 @@
  * CF Workers + D1 + Workers AI (bge-base-en-v1.5) + Vectorize.
  * Auth: Bearer token via API_TOKEN secret.
  * Custom domain: configured via wrangler.toml
+ * Remote MCP: /mcp endpoint (Streamable HTTP transport)
  */
+
+import { createMcpHandler } from "agents/mcp";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+
+function createMcpServer(env, ctx) {
+  const server = new McpServer({ name: "aetherdb", version: "1.0.0" });
+
+  function fakeReq(body) {
+    return { json: async () => body };
+  }
+  function fakeUrl(qs) {
+    return { searchParams: new URLSearchParams(qs) };
+  }
+  async function call(fn) {
+    const resp = await fn();
+    if (resp instanceof Response) {
+      if (resp.status === 204) return { deleted: true };
+      return resp.json();
+    }
+    return resp;
+  }
+
+  const txt = (data) => ({ content: [{ type: "text", text: JSON.stringify(data, null, 2) }] });
+
+  server.tool("aetherdb_create_document", "Store a document. Auto-embeds and extracts entities.", {
+    content: z.string().describe("Document content"),
+    metadata: z.string().optional().describe("JSON metadata object"),
+    id: z.string().optional().describe("Optional client-supplied ID"),
+  }, async ({ content, metadata, id }) => {
+    const body = { content, metadata: metadata ? JSON.parse(metadata) : {} };
+    if (id) body.id = id;
+    return txt(await call(() => createDocument(fakeReq(body), env, ctx)));
+  });
+
+  server.tool("aetherdb_upsert_document", "Create or update by ID or metadata key.", {
+    content: z.string().describe("Document content"),
+    metadata: z.string().optional().describe("JSON metadata object"),
+    id: z.string().optional().describe("Document ID"),
+    metadata_key: z.string().optional().describe("Metadata key for upsert lookup"),
+  }, async ({ content, metadata, id, metadata_key }) => {
+    const body = { content, metadata: metadata ? JSON.parse(metadata) : {} };
+    if (id) body.id = id;
+    if (metadata_key) body.metadata_key = metadata_key;
+    return txt(await call(() => upsertDocument(fakeReq(body), env, ctx)));
+  });
+
+  server.tool("aetherdb_get_document", "Retrieve a document by UUID.", {
+    id: z.string().describe("Document UUID"),
+  }, async ({ id }) => txt(await call(() => getDocument(id, env))));
+
+  server.tool("aetherdb_delete_document", "Delete a document.", {
+    id: z.string().describe("Document UUID"),
+  }, async ({ id }) => txt(await call(() => deleteDocument(id, env))));
+
+  server.tool("aetherdb_search", "Semantic vector search with optional metadata filtering.", {
+    query: z.string().describe("Search query"),
+    top_k: z.number().optional().describe("Results count (default 10)"),
+    filter: z.string().optional().describe("JSON metadata filter"),
+    return_content: z.boolean().optional().describe("Include full content"),
+  }, async ({ query, top_k, filter, return_content }) => {
+    const body = { query, top_k: top_k || 10, return_content: return_content || false };
+    if (filter) body.filter = JSON.parse(filter);
+    return txt(await call(() => semanticSearch(fakeReq(body), env)));
+  });
+
+  server.tool("aetherdb_hybrid_search", "Hybrid vector + graph search.", {
+    query: z.string().describe("Search query"),
+    top_k: z.number().optional().describe("Results count (default 10)"),
+    graph_depth: z.number().optional().describe("Depth 0-5 (default 2)"),
+    graph_weight: z.number().optional().describe("Weight 0-1 (default 0.3)"),
+    filter: z.string().optional().describe("JSON metadata filter"),
+    return_content: z.boolean().optional().describe("Include full content"),
+  }, async ({ query, top_k, graph_depth, graph_weight, filter, return_content }) => {
+    const body = { query, top_k: top_k || 10, graph_depth: graph_depth ?? 2, graph_weight: graph_weight ?? 0.3, return_content: return_content || false };
+    if (filter) body.filter = JSON.parse(filter);
+    return txt(await call(() => hybridSearch(fakeReq(body), env)));
+  });
+
+  server.tool("aetherdb_fulltext_search", "Full-text keyword search (FTS5).", {
+    query: z.string().describe("FTS5 query"),
+    top_k: z.number().optional().describe("Results count (default 10)"),
+    return_content: z.boolean().optional().describe("Include full content"),
+  }, async ({ query, top_k, return_content }) =>
+    txt(await call(() => fulltextSearch(fakeReq({ query, top_k: top_k || 10, return_content: return_content || false }), env))));
+
+  server.tool("aetherdb_list_documents", "List documents with filters.", {
+    limit: z.number().optional().describe("Max results (default 50)"),
+    offset: z.number().optional().describe("Offset"),
+    content_contains: z.string().optional().describe("Content filter"),
+    metadata_key: z.string().optional().describe("Metadata key filter"),
+    metadata_value: z.string().optional().describe("Metadata value filter"),
+  }, async ({ limit, offset, content_contains, metadata_key, metadata_value }) => {
+    const p = new URLSearchParams();
+    if (limit) p.set("limit", String(limit));
+    if (offset) p.set("offset", String(offset));
+    if (content_contains) p.set("content_contains", content_contains);
+    if (metadata_key) p.set("metadata_key", metadata_key);
+    if (metadata_value) p.set("metadata_value", metadata_value);
+    return txt(await call(() => listDocuments(fakeUrl(p.toString()), env)));
+  });
+
+  server.tool("aetherdb_sql_query", "Read-only SQL query (SELECT/WITH).", {
+    sql: z.string().describe("SQL query"),
+  }, async ({ sql }) => txt(await call(() => sqlQuery(fakeReq({ sql }), env))));
+
+  server.tool("aetherdb_get_versions", "Get version history.", {
+    id: z.string().describe("Document UUID"),
+  }, async ({ id }) => txt(await call(() => getVersions(id, env))));
+
+  server.tool("aetherdb_get_entities", "Get entities from a document.", {
+    document_id: z.string().describe("Document UUID"),
+  }, async ({ document_id }) => txt(await call(() => getEntities(document_id, env))));
+
+  server.tool("aetherdb_get_related", "Find related docs via graph traversal.", {
+    entity_name: z.string().describe("Entity name"),
+    depth: z.number().optional().describe("Depth 1-5 (default 2)"),
+  }, async ({ entity_name, depth }) =>
+    txt(await call(() => getRelated(entity_name, depth || 2, env))));
+
+  return server;
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -25,6 +148,13 @@ export default {
     }
 
     try {
+      // Remote MCP server — no auth (MCP clients authenticate via tool calls)
+      if (path === "/mcp" || path.startsWith("/mcp/")) {
+        const mcpServer = createMcpServer(env, ctx);
+        const handler = createMcpHandler(mcpServer, { route: "/mcp" });
+        return handler(request, env, ctx);
+      }
+
       // Health — no auth required
       if (path === "/health") {
         const [docs, entities, rels] = await Promise.all([
