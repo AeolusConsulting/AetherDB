@@ -219,19 +219,19 @@ export default {
       if (path === "/v1/documents" && method === "POST") {
         return await createDocument(request, env, ctx);
       }
-      if (path.match(/^\/v1\/documents\/[\w-]+$/) && method === "GET") {
+      if (path.match(/^\/v1\/documents\/[\w:-]+$/) && method === "GET") {
         const id = path.split("/").pop();
         return await getDocument(id, env);
       }
-      if (path.match(/^\/v1\/documents\/[\w-]+$/) && method === "PUT") {
+      if (path.match(/^\/v1\/documents\/[\w:-]+$/) && method === "PUT") {
         const id = path.split("/").pop();
         return await updateDocument(id, request, env, ctx);
       }
-      if (path.match(/^\/v1\/documents\/[\w-]+\/versions$/) && method === "GET") {
+      if (path.match(/^\/v1\/documents\/[\w:-]+\/versions$/) && method === "GET") {
         const id = path.split("/")[3];
         return await getVersions(id, env);
       }
-      if (path.match(/^\/v1\/documents\/[\w-]+$/) && method === "DELETE") {
+      if (path.match(/^\/v1\/documents\/[\w:-]+$/) && method === "DELETE") {
         const id = path.split("/").pop();
         return await deleteDocument(id, env);
       }
