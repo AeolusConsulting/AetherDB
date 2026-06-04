@@ -21,9 +21,10 @@ Admin endpoints (`/v1/admin/*`) require a separate admin token.
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Health check with doc/entity/relationship counts |
-| POST | `/v1/documents` | Create document (auto-embeds, extracts entities, deduplicates) |
+| POST | `/v1/documents` | Create document (accepts optional `id`, auto-embeds, extracts entities, deduplicates) |
+| POST | `/v1/documents/upsert` | Create or update by `id` or `metadata_key` match |
 | POST | `/v1/documents/bulk` | Batch import (max 1000) |
-| GET | `/v1/documents/list` | Paginated list with filters |
+| GET | `/v1/documents/list` | Paginated list with content and metadata filters |
 | GET | `/v1/documents/:id` | Get document |
 | PUT | `/v1/documents/:id` | Update document (saves previous version) |
 | DELETE | `/v1/documents/:id` | Soft-delete |
@@ -279,17 +280,40 @@ versions = requests.get(f'{BASE}/v1/documents/{doc["id"]}/versions',
     headers=headers).json()
 ```
 
+## Upsert (create or update)
+
+```bash
+# Upsert by client-supplied ID
+curl -X POST https://your-aetherdb.workers.dev/v1/documents/upsert \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"id": "my-stable-id", "content": "Latest version", "metadata": {"key": "memory-001"}}'
+
+# Upsert by metadata key (finds existing doc where metadata.key matches)
+curl -X POST https://your-aetherdb.workers.dev/v1/documents/upsert \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Latest version", "metadata": {"key": "memory-001"}, "metadata_key": "key"}'
+```
+
+Response includes `"upsert": "created"` or `"upsert": "updated"`. Previous content is saved as a version on update.
+
 ## Notes
 
 - All responses are JSON with `Access-Control-Allow-Origin: *`
 - Content max size: 1MB per document
 - Bulk import max: 1000 documents per request
+- **Client-supplied IDs**: pass `"id": "your-id"` on create or upsert
 - Deduplication: on by default (content_hash check), opt-out with `deduplicate: false`
 - Entity extraction: async on create/update (~2-5s in background), opt-in for bulk import
 - Document versioning: previous content saved automatically on update
 - SQL endpoint: SELECT/WITH only (write operations blocked)
 - Metadata: freeform JSON, queryable via `json_extract()` in SQL, filterable in vector search
-- Metadata filtering: string, number, boolean fields are indexed in Vectorize (source, category, created_at)
+- **Metadata filtering on list**: use `?metadata_key=source&metadata_value=myapp`
+- **Metadata filtering on search**: use `"filter": {"source": "myapp"}` in request body (Vectorize metadata filter)
+- **Search indexing lag**: Vectorize inserts are async — new documents may take 2-5 seconds to appear in vector search results. FTS and D1 queries are immediate.
+- **Metadata filter prerequisite**: Vectorize metadata indexes must exist before vectors are inserted. If filters return empty results, run `POST /v1/admin/backfill-embeddings` to re-upsert vectors with metadata.
+- Search results include metadata from Vectorize by default (string/number/boolean fields)
 - Soft-delete: deleted docs are hidden from GET/list but preserved for sync
 - Timestamps: ISO 8601 in responses, Unix milliseconds internally
 

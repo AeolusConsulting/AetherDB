@@ -83,6 +83,9 @@ export default {
       }
 
       // Documents
+      if (path === "/v1/documents/upsert" && method === "POST") {
+        return await upsertDocument(request, env, ctx);
+      }
       if (path === "/v1/documents" && method === "POST") {
         return await createDocument(request, env, ctx);
       }
@@ -334,7 +337,7 @@ function buildVectorMetadata(content, metadata) {
 // --- Document CRUD ---
 
 async function createDocument(request, env, ctx) {
-  const { content, metadata, deduplicate } = await request.json();
+  const { id: clientId, content, metadata, deduplicate } = await request.json();
   if (!content || content.length === 0) {
     return json({ error: "content must not be empty" }, 400);
   }
@@ -357,7 +360,7 @@ async function createDocument(request, env, ctx) {
     }
   }
 
-  const id = generateId();
+  const id = clientId || generateId();
   const now = Date.now();
   const meta = JSON.stringify(metadata || {});
 
@@ -383,6 +386,94 @@ async function createDocument(request, env, ctx) {
   }
 
   return json({ id, created_at: new Date(now).toISOString(), embedded: true, entities: "processing" }, 201);
+}
+
+async function upsertDocument(request, env, ctx) {
+  const { id, content, metadata, metadata_key } = await request.json();
+  if (!content || content.length === 0) {
+    return json({ error: "content must not be empty" }, 400);
+  }
+  if (content.length > 1_048_576) {
+    return json({ error: "content too large" }, 400);
+  }
+
+  let existingId = null;
+
+  if (id) {
+    const row = await env.DB.prepare("SELECT id FROM documents WHERE id = ? AND deleted = 0").bind(id).first();
+    if (row) existingId = row.id;
+  } else if (metadata_key && metadata) {
+    const keyValue = typeof metadata === "object" ? metadata[metadata_key] : null;
+    if (keyValue) {
+      const row = await env.DB.prepare(
+        "SELECT id FROM documents WHERE json_extract(metadata, ?) = ? AND deleted = 0"
+      ).bind(`$.${metadata_key}`, String(keyValue)).first();
+      if (row) existingId = row.id;
+    }
+  }
+
+  if (existingId) {
+    const now = Date.now();
+    const contentHash = await hashContent(content);
+    const meta = JSON.stringify(metadata || {});
+
+    const old = await env.DB.prepare(
+      "SELECT content, metadata, content_hash, updated_at FROM documents WHERE id = ?"
+    ).bind(existingId).first();
+
+    await env.DB.prepare(
+      "UPDATE documents SET content = ?, metadata = ?, content_hash = ?, updated_at = ? WHERE id = ?"
+    ).bind(content, meta, contentHash, now, existingId).run();
+
+    if (old) {
+      await env.DB.prepare(
+        "INSERT INTO document_versions (id, document_id, content, metadata, content_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(generateId(), existingId, old.content, old.metadata, old.content_hash, old.updated_at).run().catch(() => {});
+    }
+
+    await env.DB.prepare("DELETE FROM documents_fts WHERE id = ?").bind(existingId).run().catch(() => {});
+    await env.DB.prepare("INSERT INTO documents_fts (id, content) VALUES (?, ?)").bind(existingId, content).run().catch(() => {});
+
+    const vector = await embedText(content.substring(0, 2048), env);
+    await env.VECTORIZE.upsert([{ id: existingId, values: vector, metadata: buildVectorMetadata(content, metadata) }]);
+
+    await deleteEntitiesForDocument(existingId, env);
+    if (ctx) {
+      ctx.waitUntil((async () => {
+        try {
+          const extraction = await extractEntities(content, env);
+          if (extraction.entities.length > 0) await storeEntities(existingId, extraction, env);
+        } catch (e) { /* best-effort */ }
+      })());
+    }
+
+    return json({ id: existingId, updated_at: new Date(now).toISOString(), embedded: true, entities: "processing", upsert: "updated" });
+  }
+
+  const newId = id || generateId();
+  const now = Date.now();
+  const contentHash = await hashContent(content);
+  const meta = JSON.stringify(metadata || {});
+
+  await env.DB.prepare(
+    "INSERT INTO documents (id, content, metadata, content_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(newId, content, meta, contentHash, now, now).run();
+
+  await env.DB.prepare("INSERT INTO documents_fts (id, content) VALUES (?, ?)").bind(newId, content).run().catch(() => {});
+
+  const vector = await embedText(content.substring(0, 2048), env);
+  await env.VECTORIZE.upsert([{ id: newId, values: vector, metadata: buildVectorMetadata(content, metadata) }]);
+
+  if (ctx) {
+    ctx.waitUntil((async () => {
+      try {
+        const extraction = await extractEntities(content, env);
+        if (extraction.entities.length > 0) await storeEntities(newId, extraction, env);
+      } catch (e) { /* best-effort */ }
+    })());
+  }
+
+  return json({ id: newId, created_at: new Date(now).toISOString(), embedded: true, entities: "processing", upsert: "created" }, 201);
 }
 
 async function getDocument(id, env) {
@@ -500,11 +591,15 @@ async function semanticSearch(request, env) {
   if (filter && typeof filter === "object") queryOpts.filter = filter;
   const matches = await env.VECTORIZE.query(queryVector, queryOpts);
 
-  let results = (matches.matches || []).map((m) => ({
-    document_id: m.id,
-    score: m.score,
-    content_preview: m.metadata?.content_preview || "",
-  }));
+  let results = (matches.matches || []).map((m) => {
+    const { content_preview, ...vectorMeta } = m.metadata || {};
+    return {
+      document_id: m.id,
+      score: m.score,
+      content_preview: content_preview || "",
+      metadata: Object.keys(vectorMeta).length > 0 ? vectorMeta : null,
+    };
+  });
 
   if (return_content && results.length > 0) {
     const ids = results.map((r) => r.document_id);
@@ -596,10 +691,17 @@ async function hybridSearch(request, env) {
       content_preview: (docMap[r.document_id]?.content || "").substring(0, 200),
     }));
   } else {
-    const metaMap = Object.fromEntries(
-      (matches.matches || []).map((m) => [m.id, m.metadata?.content_preview || ""])
+    const vecMetaMap = Object.fromEntries(
+      (matches.matches || []).map((m) => {
+        const { content_preview, ...rest } = m.metadata || {};
+        return [m.id, { content_preview: content_preview || "", metadata: Object.keys(rest).length > 0 ? rest : null }];
+      })
     );
-    results = results.map((r) => ({ ...r, content_preview: metaMap[r.document_id] || "" }));
+    results = results.map((r) => ({
+      ...r,
+      content_preview: vecMetaMap[r.document_id]?.content_preview || "",
+      metadata: vecMetaMap[r.document_id]?.metadata || null,
+    }));
   }
 
   return json({ results, count: results.length });
@@ -893,6 +995,8 @@ async function listDocuments(url, env) {
   const contentContains = url.searchParams.get("content_contains");
   const createdAfter = url.searchParams.get("created_after");
   const createdBefore = url.searchParams.get("created_before");
+  const metadataKey = url.searchParams.get("metadata_key");
+  const metadataValue = url.searchParams.get("metadata_value");
 
   let where = "deleted = 0";
   const params = [];
@@ -908,6 +1012,11 @@ async function listDocuments(url, env) {
   if (createdBefore) {
     params.push(parseInt(createdBefore));
     where += ` AND created_at <= ?`;
+  }
+  if (metadataKey && metadataValue) {
+    params.push(`$.${metadataKey}`);
+    params.push(metadataValue);
+    where += ` AND json_extract(metadata, ?) = ?`;
   }
 
   const sql = `SELECT id, content, metadata, created_at, updated_at FROM documents WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`;
