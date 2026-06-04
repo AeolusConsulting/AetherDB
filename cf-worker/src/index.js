@@ -148,8 +148,10 @@ export default {
     }
 
     try {
-      // Remote MCP server — no auth (MCP clients authenticate via tool calls)
+      // Remote MCP server — requires same Bearer auth as REST API
       if (path === "/mcp" || path.startsWith("/mcp/")) {
+        const authErr = checkAuth(request, env);
+        if (authErr) return authErr;
         const mcpServer = createMcpServer(env, ctx);
         const handler = createMcpHandler(mcpServer, { route: "/mcp" });
         return handler(request, env, ctx);
